@@ -15,11 +15,11 @@
 #$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
 
-# * Increase sample size - Now doubled to 200
+# * Increase sample size - Now doubled to 200 other selectively identified added
 # * Add the factor simplification for the response variables
-# * Predict for all polygons
-# * OOB error and confusion matrix
-# * Independent validation
+# * Predict for all polygons - Done
+# * OOB error and confusion matrix - Done
+# * Independent validation - TODO
 # * Summarise the outputs 
 
 #### Setup libraries ####
@@ -29,6 +29,7 @@ library(tidyverse)
 library(here)
 library(caret)
 library(ranger)
+library(randomForest)
 
 
 #### Set up file directories ####
@@ -53,11 +54,11 @@ print('File directories setup')
 print('Reading Data')
 
 # Read Gain poly
-gain_shp<-st_read(here('vector', 'lt_gain_poly_v4.shp'))
+gain_shp<-st_read(here('vector', 'lt_gain_poly_v6.shp'))
 #plot(gain_shp)
 
 # Read loss poly
-loss_shp<-st_read(here('vector', 'lt_disturbance_poly.shp'))
+loss_shp<-st_read(here('vector', 'lt_disturbance_poly_v6.shp'))
 
 # Read interpretations
 ref<-read_csv(here('AttributionPlots', 'samplePlotsAttribution.csv'))
@@ -117,10 +118,10 @@ ref.loss<- left_join(ref.loss, loss.preds, by = 'fid')
 
 
 ref.gain<- ref.gain %>% 
-  select(-id, -changeType, -Comments, -fid, -cat, -ID, -label, -yod, -geometry, -changeAgent) 
+  select(-id, -changeType, -Comments, -fid, -cat, -ID, -label, -yod, -geometry, -changeAgent, -dsnr, -dur, -rate) 
 
 ref.loss<- ref.loss %>% 
-  select(-id, -changeType, -Comments, -fid, -cat, -ID, -label, -yod, -geometry, -changeAgent) 
+  select(-id, -changeType, -Comments, -fid, -cat, -ID, -label, -yod, -geometry, -changeAgent, -dsnr, -dur, -rate) 
 
 
 
@@ -137,23 +138,124 @@ ref.loss$simplifiedAgent<-as.factor(ref.loss$simplifiedAgent)
 # Fit a random forest model for gain and loss
 
 
-
-
 set.seed(1979)
 gain_rf<-ranger(simplifiedAgent~., data=ref.gain, num.trees = 500, mtry =1, importance = "permutation")
 print(gain_rf)
 gain_rf$confusion.matrix
+gain_rf$variable.importance
+
+set.seed(1979)
+gain_rf2<-randomForest(simplifiedAgent~., data=ref.gain,  norm.votes = TRUE, proximity = TRUE)
+print(gain_rf2)
+plot(gain_rf2)
+
+gain_rf2$confusion
+
+imp.gain<-as.data.frame(importance(gain_rf2))
+imp.gain$Variable<-row.names(imp.gain)
+
 
 set.seed(1979)
 loss_rf<-ranger(simplifiedAgent~., data=ref.loss, num.trees = 500, mtry =1)
 print(loss_rf)
 loss_rf$confusion.matrix
 
+print(1979)
+loss_rf2<-randomForest(simplifiedAgent~., data=ref.loss,  norm.votes = TRUE, proximity = TRUE)
+print(loss_rf2)
+plot(loss_rf2)
+
+loss_rf2$confusion
+
+imp.loss<-as.data.frame(importance(loss_rf2))
+imp.loss$Variable<-row.names(imp.loss)
+
+imps<-left_join(imp.gain, imp.loss, by="Variable")
 
 
 
 
+#### Use RF model to predict for the all polygons ####
+
+gain.out.prob<-as.data.frame(predict(gain_rf2, gain.preds, type = "prob"))
+loss.out.prob<-as.data.frame(predict(loss_rf2, loss.preds, type = "prob"))
+gain.out.resp<-as.data.frame(predict(gain_rf2, gain.preds, type = "response"))
+loss.out.resp<-as.data.frame(predict(loss_rf2, loss.preds, type = "response"))
 
 
+
+gain.map<-bind_cols(gain.preds, gain.out.resp)
+loss.map<-bind_cols(loss.preds, loss.out.resp)
+
+colnames(gain.map)[24] <- "ChangeClass"
+colnames(loss.map)[24] <- "ChangeClass"
+
+
+# Chart wilding invasion by year
+
+gain.map$ChangeClass<-fct_explicit_na(gain.map$ChangeClass)
+loss.map$ChangeClass<-fct_explicit_na(loss.map$ChangeClass)
+
+gain.areas<-gain.map %>% 
+  #group_by(yod, ChangeClass) %>% 
+  #summarize() %>%
+  mutate(area = st_area(.))  
+
+loss.areas<-loss.map %>% 
+  #group_by(yod, ChangeClass) %>% 
+  #summarize() %>%
+  mutate(area = st_area(.)) 
+
+
+gain.areas$area<-unclass(gain.areas$area)
+loss.areas$area<-unclass(loss.areas$area)
+
+
+
+# Chart wilding gain only
+gain.areas %>%
+  filter(ChangeClass == 4) %>% 
+  group_by(yod) %>%
+  summarise(area2 = sum(area)) %>%
+  ggplot(aes(x=yod, y=cumsum(area2)/10000)) +
+  geom_line() +
+  geom_point() +
+  theme_bw() +
+  labs(y = "Cumulative area (ha)", x= 'Year')
+
+
+# Chart wilding control only
+loss.areas %>%
+  filter(ChangeClass == 2) %>% 
+  group_by(yod) %>%
+  summarise(area2 = sum(area)) %>%
+  ggplot(aes(x=yod, y=cumsum(area2)/10000)) +
+  geom_line() +
+  geom_point() +
+  theme_bw() +
+  labs(y = "Cumulative area (ha)", x= 'Year')
+
+
+
+# Stacked chart of gain attribution
+gain.areas %>%
+  group_by(yod, ChangeClass) %>%
+  summarise(area2 = sum(area)) %>%
+  ggplot(aes(x=yod, y=area2/10000, fill = ChangeClass)) +
+  geom_area(alpha=0.6 , size=.5, colour="white") +
+  scale_fill_viridis_d() +
+  theme_bw()
+
+
+# Stacked chart of loss attribution
+loss.areas %>%
+  group_by(yod, ChangeClass) %>%
+  summarise(area2 = sum(area)) %>%
+  ggplot(aes(x=yod, y=area2/10000, fill = ChangeClass)) +
+  geom_area(alpha=0.6 , size=.5, colour="white") +
+  scale_fill_viridis_d() +
+  theme_bw()
+  
+  
 
 

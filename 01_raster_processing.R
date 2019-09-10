@@ -93,12 +93,14 @@ print('Setting up file directories')
 tcb_ftv_dir<-here('raster', 'ftvRasters', 'tcb_ftv')
 tcg_ftv_dir<-here('raster', 'ftvRasters', 'tcg_ftv')
 tcw_ftv_dir<-here('raster', 'ftvRasters', 'tcw_ftv')
+nbr_ftv_dir<-here('raster', 'ftvRasters', 'nbr_ftv')
 chg_map_dir<-here('raster', 'changeMaps')
 
 # List the tif files in the ftv directories 
 tcb_ftv_files <- list.files(tcb_ftv_dir, pattern = "\\.tif$", full.names = TRUE)
 tcg_ftv_files <- list.files(tcg_ftv_dir, pattern = "\\.tif$", full.names = TRUE)
 tcw_ftv_files <- list.files(tcw_ftv_dir, pattern = "\\.tif$", full.names = TRUE)
+nbr_ftv_files <- list.files(nbr_ftv_dir, pattern = "\\.tif$", full.names = TRUE)
 
 print('File directories setup')
 
@@ -110,11 +112,11 @@ print('File directories setup')
 print('Reading change polygons')
 
 # Read Gain poly
-gain_shp<-st_read(here('vector', 'lt_gain_poly_v4.shp'))
+gain_shp<-st_read(here('vector', 'lt_gain_poly_v6.shp'))
 #plot(gain_shp)
 
 # Read loss poly
-loss_shp<-st_read(here('vector', 'lt_disturbance_poly.shp'))
+loss_shp<-st_read(here('vector', 'lt_disturbance_poly_v6.shp'))
 
 
 
@@ -127,11 +129,11 @@ print('Polygons read')
 print('Reading LT rasters')
 # Read in lt outputs
 #lt_gain<-stack(here('raster', 'changeMaps', 'lt-gee_gain_map_HighCountry_v3.tif'))
-lt_gain<-stack(here('raster', 'changeMaps', 'lt-gee_gain_map_v4.tif'))
+lt_gain<-stack(here('raster', 'changeMaps', 'lt-gee_gain_map_HighCountry_v6.tif'))
 
 NAvalue(lt_gain) <- 0
 
-lt_loss<-stack(here('raster', 'changeMaps', 'lt-gee_disturbance_map_HighCountry_v3.tif'))
+lt_loss<-stack(here('raster', 'changeMaps', 'lt-gee_disturbance_map_HighCountry_v6.tif'))
 NAvalue(lt_loss) <- 0
 
 print('LT rasters read')
@@ -173,6 +175,9 @@ tcw.gain<-distinct(tcw.gain, fid, .keep_all= TRUE)
 tcg.gain<-tileextractor(dir = tcg_ftv_files, shp = gain_shp)
 tcg.gain$tCap<-'greeness'
 tcg.gain<-distinct(tcg.gain, fid, .keep_all= TRUE)
+nbr.gain<-tileextractor(dir = nbr_ftv_files, shp = gain_shp)
+nbr.gain$tCap<-'nbr'
+nbr.gain<-distinct(nbr.gain, fid, .keep_all= TRUE)
 
 #Extract values for the loss polygons
 tcb.loss<-tileextractor(dir = tcb_ftv_files, shp = loss_shp)
@@ -184,6 +189,9 @@ tcw.loss<-distinct(tcw.loss, fid, .keep_all= TRUE)
 tcg.loss<-tileextractor(dir = tcg_ftv_files, shp = loss_shp)
 tcg.loss$tCap<-'greeness'
 tcg.loss<-distinct(tcg.loss, fid, .keep_all= TRUE)
+nbr.loss<-tileextractor(dir = nbr_ftv_files, shp = loss_shp)
+nbr.loss$tCap<-'nbr'
+nbr.loss<-distinct(nbr.loss, fid, .keep_all= TRUE)
 
 print('Finished extracting tcb raster tiles')
 
@@ -195,8 +203,8 @@ print('Finished extracting tcb raster tiles')
 print('Munging predictors dataframe')
 # Now make the dataframe as a lookup for the predictor set
 # Merge the dataframes
-tc.gain<-bind_rows(tcb.gain, tcw.gain, tcg.gain)
-tc.loss<-bind_rows(tcb.loss, tcw.loss, tcg.loss)
+tc.gain<-bind_rows(tcb.gain, tcw.gain, tcg.gain, nbr.gain)
+tc.loss<-bind_rows(tcb.loss, tcw.loss, tcg.loss, nbr.loss)
 
 # Specify the names to be changed
 oldnames = c("V1","V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10", "V11",
@@ -230,8 +238,8 @@ tc.loss.lookup<-tc.loss %>%
 
 # Now make the datasets for prediction
 
-oldnames = c("greeness", "brightness", "wetness")
-newnames = c("start_greeness", "start_brightness", "start_wetness")
+oldnames = c("greeness", "brightness", "wetness", "nbr")
+newnames = c("start_greeness", "start_brightness", "start_wetness", "start_nbr")
 
 lt_gain.predictors<-left_join(lt_gain.out, tc.gain.lookup, by = c("fid" = "fid",  "yod" = "year")) 
 lt_gain.predictors<-lt_gain.predictors %>% rename_at(vars(oldnames), ~ newnames)
@@ -255,7 +263,7 @@ lt_gain.predictors$yod_post <-ifelse(lt_gain.predictors$yod == 2019, 2019, lt_ga
 lt_loss.predictors$yod_post <-ifelse(lt_loss.predictors$yod == 2019, 2019, lt_loss.predictors$yod + 1)
 
 # bring in the t-cap values for the end of the segment
-newnames = c("end_greeness", "end_brightness", "end_wetness")
+newnames = c("end_greeness", "end_brightness", "end_wetness", "end_nbr")
 
 lt_gain.predictors<-left_join(lt_gain.predictors, tc.gain.lookup, by = c("fid" = "fid",  "yod_end" = "year")) 
 lt_gain.predictors<-lt_gain.predictors %>% rename_at(vars(oldnames), ~ newnames)
@@ -265,7 +273,7 @@ lt_loss.predictors<-lt_loss.predictors %>% rename_at(vars(oldnames), ~ newnames)
 
 
 # bring in the t-cap values for one year before 
-newnames = c("pre_greeness", "pre_brightness", "pre_wetness")
+newnames = c("pre_greeness", "pre_brightness", "pre_wetness", "pre_nbr")
 lt_gain.predictors<-left_join(lt_gain.predictors, tc.gain.lookup, by = c("fid" = "fid",  "yod_pre" = "year")) 
 lt_gain.predictors<-lt_gain.predictors %>% rename_at(vars(oldnames), ~ newnames)
 
@@ -274,7 +282,7 @@ lt_loss.predictors<-lt_loss.predictors %>% rename_at(vars(oldnames), ~ newnames)
 
 
 # bring in the t-cap values for one year after detection
-newnames = c("post_greeness", "post_brightness", "post_wetness")
+newnames = c("post_greeness", "post_brightness", "post_wetness", "post_nbr")
 lt_gain.predictors<-left_join(lt_gain.predictors, tc.gain.lookup, by = c("fid" = "fid",  "yod_post" = "year")) 
 lt_gain.predictors<-lt_gain.predictors %>% rename_at(vars(oldnames), ~ newnames)
 
