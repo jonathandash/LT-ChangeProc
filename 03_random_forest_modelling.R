@@ -40,12 +40,14 @@ print('Setting up file directories')
 tcb_ftv_dir<-here('raster', 'ftvRasters', 'tcb_ftv')
 tcg_ftv_dir<-here('raster', 'ftvRasters', 'tcg_ftv')
 tcw_ftv_dir<-here('raster', 'ftvRasters', 'tcw_ftv')
+nbr_ftv_dir<-here('raster', 'ftvRasters', 'nbr_ftv')
 chg_map_dir<-here('raster', 'changeMaps')
 
 # List the tif files in the ftv directories 
 tcb_ftv_files <- list.files(tcb_ftv_dir, pattern = "\\.tif$", full.names = TRUE)
 tcg_ftv_files <- list.files(tcg_ftv_dir, pattern = "\\.tif$", full.names = TRUE)
 tcw_ftv_files <- list.files(tcw_ftv_dir, pattern = "\\.tif$", full.names = TRUE)
+nbr_ftv_files <- list.files(nbr_ftv_dir, pattern = "\\.tif$", full.names = TRUE)
 
 print('File directories setup')
 
@@ -154,7 +156,7 @@ gain_rf2$confusion
 imp.gain<-as.data.frame(importance(gain_rf2))
 imp.gain$Variable<-row.names(imp.gain)
 
-
+ref.loss<-ref.loss[complete.cases(ref.loss), ]
 set.seed(1979)
 loss_rf<-ranger(simplifiedAgent~., data=ref.loss, num.trees = 500, mtry =1)
 print(loss_rf)
@@ -187,8 +189,8 @@ loss.out.resp<-as.data.frame(predict(loss_rf2, loss.preds, type = "response"))
 gain.map<-bind_cols(gain.preds, gain.out.resp)
 loss.map<-bind_cols(loss.preds, loss.out.resp)
 
-colnames(gain.map)[24] <- "ChangeClass"
-colnames(loss.map)[24] <- "ChangeClass"
+colnames(gain.map)[29] <- "ChangeClass"
+colnames(loss.map)[29] <- "ChangeClass"
 
 
 # Chart wilding invasion by year
@@ -214,7 +216,8 @@ loss.areas$area<-unclass(loss.areas$area)
 
 # Chart wilding gain only
 gain.areas %>%
-  filter(ChangeClass == 4) %>% 
+  filter(ChangeClass == 4,
+         yod != 2016) %>% 
   group_by(yod) %>%
   summarise(area2 = sum(area)) %>%
   ggplot(aes(x=yod, y=cumsum(area2)/10000)) +
@@ -236,9 +239,10 @@ loss.areas %>%
   labs(y = "Cumulative area (ha)", x= 'Year')
 
 
-
+`%notin%` = function(x,y) !(x %in% y)
 # Stacked chart of gain attribution
 gain.areas %>%
+  filter(yod  %notin% c(2016, 2015)) %>%
   group_by(yod, ChangeClass) %>%
   summarise(area2 = sum(area)) %>%
   ggplot(aes(x=yod, y=area2/10000, fill = ChangeClass)) +

@@ -112,11 +112,11 @@ print('File directories setup')
 print('Reading change polygons')
 
 # Read Gain poly
-gain_shp<-st_read(here('vector', 'lt_gain_poly_v6.shp'))
+gain_shp<-st_read(here('vector', 'lt_gain_poly_v7.shp'))
 #plot(gain_shp)
 
 # Read loss poly
-loss_shp<-st_read(here('vector', 'lt_disturbance_poly_v6.shp'))
+loss_shp<-st_read(here('vector', 'lt_disturbance_poly_v7.shp'))
 
 
 
@@ -129,11 +129,11 @@ print('Polygons read')
 print('Reading LT rasters')
 # Read in lt outputs
 #lt_gain<-stack(here('raster', 'changeMaps', 'lt-gee_gain_map_HighCountry_v3.tif'))
-lt_gain<-stack(here('raster', 'changeMaps', 'lt-gee_gain_map_HighCountry_v6.tif'))
+lt_gain<-stack(here('raster', 'changeMaps', 'lt-gee_gain_map_HighCountry_v7.tif'))
 
 NAvalue(lt_gain) <- 0
 
-lt_loss<-stack(here('raster', 'changeMaps', 'lt-gee_disturbance_map_HighCountry_v6.tif'))
+lt_loss<-stack(here('raster', 'changeMaps', 'lt-gee_disturbance_map_HighCountry_v7.tif'))
 NAvalue(lt_loss) <- 0
 
 print('LT rasters read')
@@ -294,13 +294,15 @@ lt_loss.predictors<-lt_loss.predictors %>% rename_at(vars(oldnames), ~ newnames)
 lt_loss.predictors<-lt_loss.predictors %>% 
   mutate(delta_brightness = end_brightness - start_brightness,
          delta_greeness = end_greeness - start_greeness,
-         delta_wetness = end_wetness - start_wetness) %>%
+         delta_wetness = end_wetness - start_wetness,
+         delta_nbr = end_nbr - start_nbr) %>%
   select(-cat, -ID, -label, -yod_end, -yod_pre, -yod_post)
 
 lt_gain.predictors<-lt_gain.predictors %>% 
   mutate(delta_brightness = end_brightness - start_brightness,
          delta_greeness = end_greeness - start_greeness,
-         delta_wetness = end_wetness - start_wetness) %>%
+         delta_wetness = end_wetness - start_wetness,
+         delta_nbr = end_nbr - start_nbr) %>%
   select(-cat, -ID, -label, -yod_end, -yod_pre, -yod_post)
 
 # Save the predictors dataframes
